@@ -1,0 +1,21 @@
+{
+  "super_admin": {
+    "email": "superadmin@system.com",
+    "password": "Admin@123",
+    "login_url": "http://localhost:5000/api/auth/login"
+  },
+  "tenant": {
+    "subdomain": "demo",
+    "plan": "pro",
+    "status": "active"
+  },
+  "tenant_admin": {
+    "email": "admin@demo.com",
+    "password": "Admin@123",
+    "login_url": "http://demo.localhost:5000/api/auth/login"
+  },
+  "user": {
+    "email": "user1@demo.com",
+    "password": "User@123"
+  }
+}
