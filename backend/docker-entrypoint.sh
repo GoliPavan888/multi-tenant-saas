@@ -3,6 +3,9 @@
 echo "Waiting for database..."
 sleep 5
 
+echo "Generating Prisma Client..."
+npx prisma generate
+
 echo "Running migrations..."
 npx prisma migrate deploy
 
