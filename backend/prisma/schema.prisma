@@ -7,71 +7,112 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+//////////////////////
+// TENANTS
+//////////////////////
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  subdomain String   @unique
-  plan      String   @default("free")
-  status    String   @default("active")
-  createdAt DateTime @default(now())
+  id               String   @id @default(uuid())
+  name             String
+  subdomain        String   @unique
+  subscriptionPlan String   @default("free") @map("subscription_plan")
+  status           String   @default("active")
+  maxUsers         Int      @default(5)  @map("max_users")
+  maxProjects      Int      @default(3)  @map("max_projects")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt      @map("updated_at")
 
-  users     User[]
-  projects  Project[]
-  tasks     Task[]
+  users      User[]
+  projects   Project[]
+  tasks      Task[]
+  auditLogs  AuditLog[]
+
   @@map("tenants")
 }
 
+//////////////////////
+// USERS
+//////////////////////
 model User {
   id        String   @id @default(uuid())
-  tenantId  String?
+  tenantId  String?  @map("tenant_id")
   email     String
-  password  String
+  password  String   @map("password_hash")
+  fullName  String   @map("full_name")
   role      String
-  createdAt DateTime @default(now())
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
 
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant     Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projects   Project[]  @relation("ProjectCreator")
+  tasks      Task[]     @relation("TaskAssignee")
+  auditLogs  AuditLog[]  // ✅ FIX: back relation
 
   @@unique([tenantId, email])
   @@index([tenantId])
   @@map("users")
 }
 
+//////////////////////
+// PROJECTS
+//////////////////////
 model Project {
-  id        String   @id @default(uuid())
-  tenantId  String
-  name      String
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String
+  description String?
+  status      String   @default("active")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  tasks     Task[]
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  creator  User   @relation("ProjectCreator", fields: [createdBy], references: [id])
+  tasks    Task[]
 
   @@index([tenantId])
   @@map("projects")
 }
 
+//////////////////////
+// TASKS
+//////////////////////
 model Task {
-  id        String   @id @default(uuid())
-  tenantId  String
-  projectId String
-  title     String
-  status    String   @default("todo")
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  projectId   String   @map("project_id")
+  title       String
+  description String?
+  status      String   @default("todo")
+  priority    String   @default("medium")
+  assignedTo  String?  @map("assigned_to")
+  dueDate     DateTime? @map("due_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User?   @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
 
-  @@index([tenantId])
+  @@index([tenantId, projectId])
   @@map("tasks")
 }
 
+//////////////////////
+// AUDIT LOGS
+//////////////////////
 model AuditLog {
-  id        String   @id @default(uuid())
-  tenantId  String?
-  userId    String?
-  action    String
-  entity    String
-  entityId  String?
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  tenantId   String?  @map("tenant_id")
+  userId     String?  @map("user_id")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@map("audit_logs")
