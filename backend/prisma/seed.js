@@ -7,50 +7,56 @@ async function main() {
   console.log("🌱 Seeding database...");
 
   /* =========================
-     1. SUPER ADMIN
-  ========================= */
- const superAdminPassword = await bcrypt.hash("Admin@123", 10);
+     SUPER ADMIN (tenantId NULL)
+     ========================= */
+  const superAdminEmail = "superadmin@system.com";
+  const superAdminPassword = await bcrypt.hash("Admin@123", 10);
 
-let superAdmin = await prisma.user.findFirst({
-  where: {
-    email: "superadmin@system.com",
-    tenantId: null
-  }
-});
-
-if (!superAdmin) {
-  superAdmin = await prisma.user.create({
-    data: {
-      email: "superadmin@system.com",
-      password: superAdminPassword,
-      role: "super_admin",
+  let superAdmin = await prisma.user.findFirst({
+    where: {
+      email: superAdminEmail,
       tenantId: null
     }
   });
-}
 
-console.log("✅ Super admin ready");
+  if (!superAdmin) {
+    superAdmin = await prisma.user.create({
+      data: {
+        email: superAdminEmail,
+        password: superAdminPassword,
+        fullName: "System Super Admin",
+        role: "super_admin",
+        tenantId: null,
+        isActive: true
+      }
+    });
+    console.log("✅ Super admin created");
+  } else {
+    console.log("ℹ️ Super admin already exists");
+  }
 
   /* =========================
-     2. TENANT
-  ========================= */
+     TENANT
+     ========================= */
   const tenant = await prisma.tenant.upsert({
     where: { subdomain: "demo" },
     update: {},
     create: {
-      name: "Demo Organization",
+      name: "Demo Company",
       subdomain: "demo",
-      plan: "pro",
-      status: "active"
+      subscriptionPlan: "pro",
+      status: "active",
+      maxUsers: 25,
+      maxProjects: 15
     }
   });
 
-  console.log("✅ Demo tenant ready");
+  console.log("✅ Tenant created");
 
   /* =========================
-     3. TENANT ADMIN
-  ========================= */
-  const adminPassword = await bcrypt.hash("Admin@123", 10);
+     TENANT ADMIN
+     ========================= */
+  const adminPassword = await bcrypt.hash("Demo@123", 10);
 
   const tenantAdmin = await prisma.user.upsert({
     where: {
@@ -63,61 +69,108 @@ console.log("✅ Super admin ready");
     create: {
       email: "admin@demo.com",
       password: adminPassword,
+      fullName: "Demo Admin",
       role: "tenant_admin",
-      tenantId: tenant.id
+      tenantId: tenant.id,
+      isActive: true
     }
   });
 
-  console.log("✅ Tenant admin ready");
+  console.log("✅ Tenant admin created");
 
   /* =========================
-     4. PROJECT
-  ========================= */
-  let project = await prisma.project.findFirst({
-    where: {
-      name: "Demo Project",
-      tenantId: tenant.id
-    }
-  });
+     REGULAR USERS
+     ========================= */
+  const userPassword = await bcrypt.hash("User@123", 10);
 
-  if (!project) {
-    project = await prisma.project.create({
-      data: {
-        name: "Demo Project",
-        tenantId: tenant.id
+  const users = [
+    { email: "user1@demo.com", fullName: "User One" },
+    { email: "user2@demo.com", fullName: "User Two" }
+  ];
+
+  for (const u of users) {
+    await prisma.user.upsert({
+      where: {
+        tenantId_email: {
+          tenantId: tenant.id,
+          email: u.email
+        }
+      },
+      update: {},
+      create: {
+        email: u.email,
+        password: userPassword,
+        fullName: u.fullName,
+        role: "user",
+        tenantId: tenant.id,
+        isActive: true
       }
     });
   }
 
-  console.log("✅ Project ready");
+  console.log("✅ Regular users created");
 
   /* =========================
-     5. TASK
-  ========================= */
-  const existingTask = await prisma.task.findFirst({
-    where: {
-      title: "Initial Task",
-      projectId: project.id
+     PROJECTS
+     ========================= */
+  const project1 = await prisma.project.create({
+    data: {
+      name: "Project Alpha",
+      description: "First demo project",
+      status: "active",
+      tenantId: tenant.id,
+      createdBy: tenantAdmin.id
     }
   });
 
-  if (!existingTask) {
-    await prisma.task.create({
-      data: {
-        title: "Initial Task",
+  const project2 = await prisma.project.create({
+    data: {
+      name: "Project Beta",
+      description: "Second demo project",
+      status: "active",
+      tenantId: tenant.id,
+      createdBy: tenantAdmin.id
+    }
+  });
+
+  console.log("✅ Projects created");
+
+  /* =========================
+     TASKS
+     ========================= */
+  await prisma.task.createMany({
+    data: [
+      {
+        title: "Setup project",
         status: "todo",
-        projectId: project.id,
-        tenantId: tenant.id
+        priority: "medium",
+        tenantId: tenant.id,
+        projectId: project1.id
+      },
+      {
+        title: "Design database",
+        status: "in_progress",
+        priority: "high",
+        tenantId: tenant.id,
+        projectId: project1.id
+      },
+      {
+        title: "Build API",
+        status: "todo",
+        priority: "high",
+        tenantId: tenant.id,
+        projectId: project2.id
       }
-    });
-  }
+    ]
+  });
 
-  console.log("✅ Task ready");
+  console.log("✅ Tasks created");
+  console.log("🌱 Seeding completed successfully");
 }
 
 main()
   .catch((e) => {
-    console.error("❌ Seed failed", e);
+    console.error("❌ Seeding failed", e);
     process.exit(1);
   })
   .finally(async () => {
