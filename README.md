@@ -44,3 +44,20 @@ A production-ready, multi-tenant SaaS application where multiple organizations c
 ### Start the application
 ```bash
 docker-compose up -d
+
+## Frontend Scope & Design Decision
+
+The frontend focuses on authentication (login) and basic dashboard visualization.
+Advanced administrative operations such as:
+- User creation
+- Project creation
+- Task management
+
+are intentionally demonstrated via secure REST APIs and CLI tools (curl / PowerShell).
+
+This design choice was made to:
+- Keep the frontend lightweight
+- Emphasize backend multi-tenancy, RBAC, and data isolation
+- Ensure all functionality is fully testable via API (as required by the specification)
+
+All features are accessible and verifiable through documented API endpoints.
