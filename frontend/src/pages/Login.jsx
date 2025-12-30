@@ -1,53 +1,59 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginApi } from "../services/auth.service";
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+    tenantSubdomain: ""
+  });
 
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setError("");
     try {
-      const res = await loginApi(email, password);
-      login(res.data.data.token);
+      await login(form);
+
+      // ✅ REDIRECT AFTER LOGIN
       navigate("/dashboard");
     } catch (err) {
-      setError("Invalid email or password");
+      setError(
+        err.response?.data?.message || "Login failed"
+      );
     }
   };
 
   return (
-    <div>
+    <div style={{ maxWidth: "400px", margin: "80px auto" }}>
       <h2>Login</h2>
 
       {error && <p style={{ color: "red" }}>{error}</p>}
 
-      <form onSubmit={handleSubmit}>
-        <input
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <br />
+      <input
+        placeholder="Email"
+        value={form.email}
+        onChange={e => setForm({ ...form, email: e.target.value })}
+      />
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <br />
+      <input
+        type="password"
+        placeholder="Password"
+        value={form.password}
+        onChange={e => setForm({ ...form, password: e.target.value })}
+      />
 
-        <button type="submit">Login</button>
-      </form>
+      <input
+        placeholder="Tenant Subdomain"
+        value={form.tenantSubdomain}
+        onChange={e => setForm({ ...form, tenantSubdomain: e.target.value })}
+      />
+
+      <button onClick={submit}>Login</button>
     </div>
   );
 }

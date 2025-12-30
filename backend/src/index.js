@@ -56,7 +56,7 @@ app.use(tenantResolver);
    TENANT-SCOPED ROUTES
 ============================ */
 app.use("/api/tenants", tenantRoutes);
-app.use("/api/users", userRoutes);
+app.use("/api/tenants", userRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api", auditRoutes);

@@ -1,180 +1,198 @@
 const prisma = require("../utils/prisma");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const logAudit = require("../utils/audit");
-
-const USER_LIMITS = {
-  free: 5,
-  pro: 25,
-  enterprise: 100
-};
 
 /**
  * CREATE USER
- * tenant_admin ONLY
+ * POST /api/tenants/:tenantId/users
+ * tenant_admin only
  */
 exports.createUser = async (req, res) => {
-  const { email, password, role } = req.body;
-  const { tenantId, userId, role: requesterRole } = req.user;
+  try {
+    const { tenantId } = req.params;
+    const { userId, role } = req.user;
+    const { email, password, fullName, role: newUserRole } = req.body;
 
-  if (requesterRole !== "tenant_admin") {
-    return res.status(403).json({
-      success: false,
-      message: "Only tenant admins can create users"
+    if (role !== "tenant_admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied"
+      });
+    }
+
+    if (!email || !password || !fullName) {
+      return res.status(400).json({
+        success: false,
+        message: "email, password and fullName are required"
+      });
+    }
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId }
     });
-  }
 
-  if (!email || !password || !role) {
-    return res.status(400).json({
-      success: false,
-      message: "Email, password, and role are required"
+    if (!tenant) {
+      return res.status(404).json({
+        success: false,
+        message: "Tenant not found"
+      });
+    }
+
+    const userCount = await prisma.user.count({
+      where: { tenantId }
     });
-  }
 
-  if (!["tenant_admin", "user"].includes(role)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid role"
+    if (userCount >= tenant.maxUsers) {
+      return res.status(403).json({
+        success: false,
+        message: "Subscription user limit reached"
+      });
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: { tenantId, email }
     });
-  }
 
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId }
-  });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        message: "Email already exists in this tenant"
+      });
+    }
 
-  const userCount = await prisma.user.count({
-    where: { tenantId }
-  });
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-  if (userCount >= USER_LIMITS[tenant.plan]) {
-    return res.status(403).json({
-      success: false,
-      message: "User limit exceeded for current plan"
-    });
-  }
-
-  const existing = await prisma.user.findUnique({
-    where: {
-      tenantId_email: {
-        tenantId,
-        email
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        fullName,
+        role: newUserRole || "user",
+        tenantId
       }
-    }
-  });
+    });
 
-  if (existing) {
-    return res.status(409).json({
+    await logAudit({
+      tenantId,
+      userId,
+      action: "CREATE_USER",
+      entity: "user",
+      entityId: user.id
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        tenantId: user.tenantId,
+        createdAt: user.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error("Create user error:", error);
+    return res.status(500).json({
       success: false,
-      message: "User already exists"
+      message: "Internal server error"
     });
   }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  const user = await prisma.user.create({
-    data: {
-      email,
-      password: hashedPassword,
-      role,
-      tenantId
-    }
-  });
-
-  await logAudit({
-    tenantId,
-    userId,
-    action: "CREATE",
-    entity: "User",
-    entityId: user.id
-  });
-
-  return res.status(201).json({
-    success: true,
-    data: {
-      id: user.id,
-      email: user.email,
-      role: user.role
-    }
-  });
 };
 
 /**
  * LIST USERS
- * tenant_admin ONLY
+ * GET /api/tenants/:tenantId/users
  */
 exports.listUsers = async (req, res) => {
-  const { tenantId, role } = req.user;
+  try {
+    const { tenantId } = req.params;
 
-  if (role !== "tenant_admin") {
-    return res.status(403).json({
+    const users = await prisma.user.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        role: true,
+        isActive: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return res.json({
+      success: true,
+      data: users
+    });
+
+  } catch (error) {
+    console.error("List users error:", error);
+    return res.status(500).json({
       success: false,
-      message: "Access denied"
+      message: "Internal server error"
     });
   }
-
-  const users = await prisma.user.findMany({
-    where: { tenantId },
-    select: {
-      id: true,
-      email: true,
-      role: true,
-      createdAt: true
-    },
-    orderBy: { createdAt: "desc" }
-  });
-
-  return res.json({
-    success: true,
-    data: users
-  });
 };
 
 /**
  * DELETE USER
- * tenant_admin ONLY
+ * DELETE /api/tenants/users/:userId
+ * tenant_admin only
  */
 exports.deleteUser = async (req, res) => {
-  const { id } = req.params;
-  const { tenantId, userId, role } = req.user;
+  try {
+    const { userId: targetUserId } = req.params;
+    const { userId, role, tenantId } = req.user;
 
-  if (role !== "tenant_admin") {
-    return res.status(403).json({
+    if (role !== "tenant_admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied"
+      });
+    }
+
+    if (userId === targetUserId) {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot delete yourself"
+      });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { id: targetUserId, tenantId }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    await prisma.user.delete({
+      where: { id: targetUserId }
+    });
+
+    await logAudit({
+      tenantId,
+      userId,
+      action: "DELETE_USER",
+      entity: "user",
+      entityId: targetUserId
+    });
+
+    return res.json({
+      success: true,
+      message: "User deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Delete user error:", error);
+    return res.status(500).json({
       success: false,
-      message: "Access denied"
+      message: "Internal server error"
     });
   }
-
-  if (id === userId) {
-    return res.status(400).json({
-      success: false,
-      message: "You cannot delete yourself"
-    });
-  }
-
-  const user = await prisma.user.findFirst({
-    where: { id, tenantId }
-  });
-
-  if (!user) {
-    return res.status(404).json({
-      success: false,
-      message: "User not found"
-    });
-  }
-
-  await prisma.user.delete({
-    where: { id }
-  });
-
-  await logAudit({
-    tenantId,
-    userId,
-    action: "DELETE",
-    entity: "User",
-    entityId: id
-  });
-
-  return res.json({
-    success: true,
-    message: "User deleted"
-  });
 };

@@ -1,7 +1,8 @@
 const prisma = require("../utils/prisma");
 const logAudit = require("../utils/audit");
 
-const VALID_STATUSES = ["todo", "in_progress", "done"];
+const VALID_STATUSES = ["todo", "in_progress", "done", "completed"];
+
 
 /**
  * CREATE TASK
